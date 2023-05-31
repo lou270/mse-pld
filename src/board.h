@@ -40,3 +40,6 @@
 
 // Buzzer
 #define BUZZER_PIN 10
+
+// LED
+#define PICO_LED_PIN 25
