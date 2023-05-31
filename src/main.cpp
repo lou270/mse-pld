@@ -13,7 +13,6 @@
 
 #include "board.h"
 
-
 // arduino::MbedI2C I2C0(I2C0_SDA, I2C0_SCL);
 // arduino::MbedSPI SPI1(SPI1_MISO, SPI1_MOSI, SPI1_SCLK);
 SFE_UBLOX_GNSS gnss;
@@ -91,10 +90,23 @@ void setup() {
 
 int8_t val = 0;
 
-void loop() {
-    Serial.print(F("[SX1276] Transmitting packet ... "));
+void loop() {    
+    Serial.print(F("[MAX10S] Checking gps data...\n"));
 
-    int state = radio.transmit("Testing...");
+    int32_t lat = gnss.getLatitude();
+    int32_t lon = gnss.getLongitude();
+    byte siv = gnss.getSIV();
+    Serial.print(F("[MAX10S] Lat : "));
+    Serial.print(lat);
+    Serial.print(F(" | Lon : "));
+    Serial.print(lon);
+    Serial.print(F(" | SIV : "));
+    Serial.println(siv);
+
+    Serial.print(F("[SX1276] Transmitting packet ... "));
+    char txt[10] = "";
+    sprintf(txt, "%4d;%4d", lat, lon);
+    int state = radio.transmit(txt);
 
     if (state == RADIOLIB_ERR_NONE) {
         // the packet was successfully transmitted
@@ -119,19 +131,7 @@ void loop() {
         Serial.println(state);
 
     }
-
-    Serial.print(F("[MAX10S] Checking gps data...\n"));
-
-    int32_t lat = gnss.getLatitude();
-    int32_t lon = gnss.getLongitude();
-    byte siv = gnss.getSIV();
-    Serial.print(F("[MAX10S] Lat : "));
-    Serial.print(lat);
-    Serial.print(F(" | Lon : "));
-    Serial.print(lon);
-    Serial.print(F(" | SIV : "));
-    Serial.println(siv);
-
+    
     delay(5000);
 }
 
