@@ -7,9 +7,9 @@
 // ==== PIN
 
 // RGB LED
-#define RGB_LED_R_PIN 16 
-#define RGB_LED_G_PIN 17 
-#define RGB_LED_B_PIN 18 
+#define RGB_LED_R_PIN 17
+#define RGB_LED_G_PIN 18
+#define RGB_LED_B_PIN 16
 
 // I2C0
 #define I2C0_SDA 20
@@ -27,8 +27,8 @@
 #define RADIO_DIO1_PIN 2
 
 // UART SEQ <-> PLD
-#define PLD_SEQ_UART_TX_PIN 0
-#define PLD_SEQ_UART_RX_PIN 1
+#define SEQ_PLD_UART_TX_PIN 0
+#define SEQ_PLD_UART_RX_PIN 1
 
 // UART GNSS
 #define GNSS_UART_TX_PIN 8
@@ -40,6 +40,10 @@
 
 // Buzzer
 #define BUZZER_PIN 10
+
+// PICO Board
+#define PICO_LED_PIN 25
+#define PICO_BUTTON_PIN 24
 
 // LED
 #define PICO_LED_PIN 25
