@@ -1,8 +1,10 @@
-/*************
-* Project : MSE Avionics
-* Board : PAYLOAD
-* Description : Board description
-**************/
+/******************************
+| Project       : MSE Avionics
+| Board         : PLD
+| Description   : Board description
+| Licence       : CC BY-NC-SA 
+| https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode
+******************************/
 
 // ==== PIN
 
@@ -15,10 +17,17 @@
 #define I2C0_SDA 20
 #define I2C0_SCL 21
 
+// I2C1
+#define I2C1_SDA 6
+#define I2C1_SCL 7
+
 // SPI1
 #define SPI1_MISO 12
 #define SPI1_MOSI 11
 #define SPI1_SCLK 10
+
+// IMU Pins
+#define MPU_INT_PIN 6
 
 // Specific radio module
 #define RADIO_CS_PIN 13
@@ -47,3 +56,8 @@
 
 // LED
 #define PICO_LED_PIN 25
+
+// ==== Sensor board
+#define ADC_0_ADDRESS 0b1001001
+#define ADC_1_ADDRESS 0b1001000
+

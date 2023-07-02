@@ -8,50 +8,54 @@
 #include <Arduino.h>
 #include <SPI.h>
 #include <Wire.h>
-
 #include <RadioLib.h>
 #include <SparkFun_u-blox_GNSS_v3.h>
-
 #include "board.h"
 #include "parameters.h"
+#include "sensors.h"
+#include "imu.h"
+#include "radio.h"
+#include "gnss.h"
+#include "file.h"
+// #include <Adafruit_TinyUSB.h>
 
 /* TODO
 * Add communication SEQ<->PLD
 * Add sensor data saving
-* Add protocol to send data through radio
 */
 
-// GNSS
-SFE_UBLOX_GNSS gnss;
-
-// Radio LORA
-SX1276 radio = new Module(RADIO_CS_PIN, RADIO_DIO1_PIN, RADIO_RESET_PIN, RADIO_DIO0_PIN, SPI1, RADIOLIB_DEFAULT_SPI_SETTINGS);
+// Pressure sensor
+LPS22HB lps22hb(Wire1);
 
 // SEQ<->PLD UART (from PIO UART)
 // SerialPIO SeqPldCom(SEQ_PLD_UART_TX_PIN, SEQ_PLD_UART_RX_PIN, 64);
 
-typedef enum {NO_LED, BLINK_LED, FIXED_LED} ledStatusType;
-enum ledName {RED_LED = 0, GREEN_LED = 1, BLUE_LED = 2};
+typedef enum {NO_LED = 0, BLINK_LED, FIXED_LED} ledStatusType;
+enum ledName {RED_LED = 0, GREEN_LED, BLUE_LED};
 ledStatusType ledStatus[3] = {NO_LED};
 uint8_t ledPins[3] = {RGB_LED_R_PIN, RGB_LED_G_PIN, RGB_LED_B_PIN};
-struct repeating_timer blinkTimer;
+struct repeating_timer ledTimer;
+struct repeating_timer radioTimer;
 bool launchDetected = false;
 
-typedef struct {
-    uint8_t id;
-    uint8_t sts;
-    int32_t lat;
-    int32_t lon;
-    uint16_t amb_pressure;
-    uint16_t annex0;
-    uint16_t annex1;
-} TmFrame_t;
+uint64_t currTime, prevTime = 0;
 
-TmFrame_t radioFrame;
+TmData_t radioData;
+GNSS_t gnssData;
+bool gnssValid = 0;
+uint16_t adcValue[2] = {0};
 
-void initBoard() {
+Angle_t angleImu;
+
+volatile bool ledState = 0;
+
+
+void setupBoard() {
+    #if DEBUG == true
     // USB UART
-    Serial.begin();
+    Serial.begin(115200);
+    Serial.print(F("Initializing ... "));
+    #endif
 
     // SEQ<->PLD UART (Serial1 = UART0)
     Serial1.setRX(SEQ_PLD_UART_RX_PIN);
@@ -65,119 +69,78 @@ void initBoard() {
     SPI1.setTX(SPI1_MOSI);
     SPI1.begin();
 
-    // Init I2C0 (dedicated to GNSS)
+    // Init I2C0 (dedicated to GNSS and sensor board)
     Wire.setSDA(I2C0_SDA);
     Wire.setSCL(I2C0_SCL);
     Wire.setClock(400000);
     Wire.begin();
 
-    // Init LED pins
-    for(uint8_t iStatus = 0; iStatus < 3; iStatus++) {
-        pinMode(ledPins[iStatus], OUTPUT);
-        digitalWrite(ledPins[iStatus], 1);
-    }
-}
+    // Init I2C1 (dedicated to IMU)
+    Wire1.setSDA(I2C1_SDA);
+    Wire1.setSCL(I2C1_SCL);
+    Wire1.setClock(400000);
+    Wire1.begin();
 
-void initGNSS() {
-    #if DEBUG == true
-    Serial.println(F("[GNSS] Initializing..."));
-    // gnss.enableDebugging(); // Uncomment this line to enable debug messages on Serial
-    #endif
-    if (gnss.begin() == false)
-    {
-        Serial.println(F("[GNSS] /!\\ u-blox GNSS not detected at default I2C address"));
-    } else {
-        Serial.println(F("[GNSS] u-blox MAX10S detected"));
-        delay(100);
-    }
-
+    // Init Serial2 for GNSS
     Serial2.setRX(GNSS_UART_RX_PIN);
     Serial2.setTX(GNSS_UART_TX_PIN);
+    Serial2.setFIFOSize(128);
+    Serial2.begin(115200);
 
-    // gnss.connectedToUART2();
-    // do {
-    //   Serial.println(F("[GNSS] trying 38400 baud"));
-    //   Serial2.begin(38400);
-    //   if (gnss.begin(Serial2) == true) 
-    //     break;
-    //   delay(100);
-    //   Serial.println(F("[GNSS] trying 9600 baud"));
-    //   Serial2.begin(9600);
-    //   if (gnss.begin(Serial1) == true) {
-    //     Serial.println(F("[GNSS] u-blox MAX10S detected"));
-    //     Serial.println("[GNSS] Connected at 9600 baud, switching to 38400");
-    //     gnss.setSerialRate(38400);
-    //     delay(100);
-    //   } else {
-    //     //gnss.factoryDefault();
-    //     delay(2000); //Wait a bit before trying again to limit the Serial output
-    //   }
-    // } while(1);
-
-    gnss.setI2COutput(COM_TYPE_NMEA); //Set the I2C port to output both NMEA and UBX messages
-    gnss.setUART1Output(COM_TYPE_NMEA); //Set the UART port to output NMEA only
-    gnss.saveConfigSelective(VAL_CFG_SUBSEC_IOPORT); //Save (only) the communications port settings to flash and BBR
-
-    #if DEBUG == true
-    // gnss.setNMEAOutputPort(Serial);
-    Serial.println(F("[GNSS] u-blox MAX10S done init."));
-    #endif
+    // Init LED pins
+    for(uint8_t iLed = 0; iLed < 3; iLed++) {
+        pinMode(ledPins[iLed], OUTPUT);
+        digitalWrite(ledPins[iLed], 1);
+    }
 }
 
-void initRadio() {
-    // Radio init
-    Serial.print(F("[RADIO] Initializing... "));
-    int state = 0;
-    do {
-        state = radio.begin(LORA_FREQ);
-        state += radio.setBandwidth(LORA_BW);
-        state += radio.setOutputPower(LORA_PW);
-        state += radio.setCurrentLimit(LORA_OCP);
-        state += radio.setSpreadingFactor(LORA_SF);
-        state += radio.setCRC(true, false);
-        if (state != RADIOLIB_ERR_NONE) {
-            #if DEBUG == true
-            Serial.print(F("[RADIO] Failed init, code:"));
-            Serial.println(state);
-            #endif
-            delay(1000);
-        }
-    } while(state);
-
-
-#if DEBUG == true
-    Serial.println(F("[RADIO] SX1276 begin init."));
-    #endif
-}
-
-bool blinkCallback(struct repeating_timer *t) {
-    for(uint8_t iStatus = 0; iStatus < 3; iStatus++) {
-        if(ledStatus[iStatus] == NO_LED) {
-            digitalWrite(ledPins[iStatus], 1);
-        } else if (ledStatus[iStatus] == BLINK_LED) {
-            digitalWrite(ledPins[iStatus], !digitalRead(ledPins[iStatus]));
+bool ledCallback(struct repeating_timer *t) {
+    ledState = !ledState;
+    for(uint8_t iLed = 0; iLed < 3; iLed++) {
+        // Serial.print("LED ");
+        // Serial.print(iLed);
+        // Serial.print(" : ");
+        if(ledStatus[iLed] == NO_LED) {
+            // Serial.println("NO LED");
+            digitalWrite(ledPins[iLed], 1);
+        } else if (ledStatus[iLed] == BLINK_LED) {
+            // Serial.println("BLINK LED");
+            digitalWrite(ledPins[iLed], ledState);
         } else {
-            digitalWrite(ledPins[iStatus], 0);
-        }   
+            // Serial.println("FIXED LED");
+            digitalWrite(ledPins[iLed], 0);
+        }
     }
     return true;
 }
 
-void setup() {
-    initBoard();
-    Serial.print(F("Initializing ... "));
-    ledStatus[GREEN_LED] = BLINK_LED;
-    add_repeating_timer_ms(500, blinkCallback, NULL, &blinkTimer);
-
-    initGNSS();
-    initRadio();
-
-    ledStatus[GREEN_LED] = FIXED_LED;
+void setupSensors(void) {
+    // initSensorADC();
+    setupIMU();
+    lps22hb.begin();
 }
 
-int8_t val = 0;
+bool sendDataCallback(struct repeating_timer *t) {
+    return true;
+}
+
+void setup() {
+    setupBoard();
+    ledStatus[GREEN_LED] = BLINK_LED;
+    add_repeating_timer_ms(500, ledCallback, NULL, &ledTimer);
+    setupGNSS();
+    setupRadio();
+    setupSensors();
+    setupFileSystem();
+    ledStatus[GREEN_LED] = FIXED_LED;
+
+    add_repeating_timer_ms(500, sendDataCallback, NULL, &radioTimer);
+}
 
 void loop() {
+
+    ledStatus[GREEN_LED] = FIXED_LED;
+    currTime = rp2040.getCycleCount64();
 
     // while(Serial.)
     // while(!launchDetected) {
@@ -190,78 +153,52 @@ void loop() {
     //     // ledStatus[1] = FIXED_LED;
     // }
 
-    Serial.print(F("[MAX10S] Checking gps data...\n"));
+    computeAngle(&angleImu);
 
-    int32_t lat = gnss.getLatitude();
-    int32_t lon = gnss.getLongitude();
-    byte siv = gnss.getSIV();
-    Serial.print(F("[MAX10S] Lat : "));
-    Serial.print(lat);
-    Serial.print(F(" | Lon : "));
-    Serial.print(lon);
-    Serial.print(F(" | SIV : "));
-    Serial.println(siv);
+    if (((currTime-prevTime) / (rp2040.f_cpu()/1000.0)) > 500) {
+        prevTime = currTime;
 
-    if (siv > 0) {
-        ledStatus[BLUE_LED] = FIXED_LED;
-    } else {
-        ledStatus[BLUE_LED] = BLINK_LED;
+        getGNSS(&gnssData);
+        if (gnssData.siv > 0) {
+            ledStatus[BLUE_LED] = FIXED_LED;
+            gnssValid = 1;
+        } else {
+            ledStatus[BLUE_LED] = BLINK_LED;
+            gnssValid = 0;
+        }
+
+        // Serial.println(lps22hb.readPressure());
+        // Serial.println(lps22hb.readTemperature());
+
+        // getSensorADCValue(adcValue);
+
+        #if defined(MSE)
+        radioData.id = 1;
+        #elif defined(KRYPTONIT)
+        radioData.id = 2;
+        #endif
+        radioData.rocketSts = 0;
+        radioData.gnssValid = gnssValid;
+        radioData.lat = gnssData.lat;
+        radioData.lon = gnssData.lon;
+        radioData.pressure = lps22hb.readRawPressure();
+        radioData.temp = lps22hb.readRawTemperature();
+        radioData.annex0 = adcValue[0];
+        radioData.annex1 = adcValue[1];
+        radioData.angleX = angleImu.x;
+        radioData.angleY = angleImu.y;
+        radioData.angleZ = angleImu.z;
+
+        radioSend(&radioData);
     }
-
-    Serial.print(F("[SX1276] Transmitting packet ... "));
-
-    radioFrame.id = 1;
-    radioFrame.sts = 0 + 1 << 2;
-    radioFrame.lat = lat;
-    radioFrame.lon = lon;
-    radioFrame.amb_pressure = 63251;
-    radioFrame.annex0 = 45;
-    radioFrame.annex1 = 87;
-
-    uint8_t frame[16] = {0};
-    frame[0] = radioFrame.id;
-    frame[1] = radioFrame.sts;
-    frame[2] = radioFrame.lat >> 24 & 0xFF;
-    frame[3] = radioFrame.lat >> 16 & 0xFF;
-    frame[4] = radioFrame.lat >> 8 & 0xFF;
-    frame[5] = radioFrame.lat >> 0 & 0xFF;
-    frame[6] = radioFrame.lon >> 24 & 0xFF;
-    frame[7] = radioFrame.lon >> 16 & 0xFF;
-    frame[8] = radioFrame.lon >> 8 & 0xFF;
-    frame[9] = radioFrame.lon >> 0 & 0xFF;
-    frame[10] = radioFrame.amb_pressure >> 8 & 0xFF;
-    frame[11] = radioFrame.amb_pressure >> 0 & 0xFF;
-    frame[12] = radioFrame.annex0 >> 8 & 0xFF;
-    frame[13] = radioFrame.annex0 >> 0 & 0xFF;
-    frame[14] = radioFrame.annex1 >> 8 & 0xFF;
-    frame[15] = radioFrame.annex1 >> 0 & 0xFF;
-
-    int state = radio.transmit(frame, 16);
-
-    if (state == RADIOLIB_ERR_NONE) {
-        // the packet was successfully transmitted
-        Serial.println(F(" success!"));
-
-        // print measured data rate 
-        Serial.print(F("[SX1276] Datarate:\t"));
-        Serial.print(radio.getDataRate());
-        Serial.println(F(" bps"));
-
-    } else if (state == RADIOLIB_ERR_PACKET_TOO_LONG) {
-        // the supplied packet was longer than 256 bytes
-        Serial.println(F("too long!"));
-
-    } else if (state == RADIOLIB_ERR_TX_TIMEOUT) {
-        // timeout occurred while transmitting packet
-        Serial.println(F("timeout!"));
-
-    } else {
-        // some other error occurred
-        Serial.print(F("failed, code "));
-        Serial.println(state);
-
-    }
-
     // delay(2000);
+}
+
+void setup1(void) {
+
+}
+
+void loop1(void) {
+
 }
 
