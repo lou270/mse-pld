@@ -6,8 +6,10 @@
 | https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode
 ******************************/
 #include <Arduino.h>
+#include <pico/time.h>
 #include <SPI.h>
 #include <Wire.h>
+#include <Adafruit_TinyUSB.h>
 #include <RadioLib.h>
 #include <SparkFun_u-blox_GNSS_v3.h>
 #include "board.h"
@@ -17,7 +19,6 @@
 #include "radio.h"
 #include "gnss.h"
 #include "file.h"
-// #include <Adafruit_TinyUSB.h>
 
 /* TODO
 * Add communication SEQ<->PLD
@@ -30,11 +31,12 @@ LPS22HB lps22hb(Wire1);
 // SEQ<->PLD UART (from PIO UART)
 // SerialPIO SeqPldCom(SEQ_PLD_UART_TX_PIN, SEQ_PLD_UART_RX_PIN, 64);
 
-typedef enum {NO_LED = 0, BLINK_LED, FIXED_LED} ledStatusType;
-enum ledName {RED_LED = 0, GREEN_LED, BLUE_LED};
-ledStatusType ledStatus[3] = {NO_LED};
-uint8_t ledPins[3] = {RGB_LED_R_PIN, RGB_LED_G_PIN, RGB_LED_B_PIN};
-struct repeating_timer ledTimer;
+typedef enum {NO_LED = 0, BLINK_LED = 1, FIXED_LED = 2} LedStatus_t;
+enum {RED_LED = 0, GREEN_LED = 1, BLUE_LED = 2};
+const uint8_t ledPins[3] = {RGB_LED_R_PIN, RGB_LED_G_PIN, RGB_LED_B_PIN};
+volatile LedStatus_t ledStatus[3] = {NO_LED};
+struct repeating_timer userStatusTimer;
+
 struct repeating_timer radioTimer;
 bool launchDetected = false;
 
@@ -43,12 +45,16 @@ uint64_t currTime, prevTime = 0;
 TmData_t radioData;
 GNSS_t gnssData;
 bool gnssValid = 0;
-uint16_t adcValue[2] = {0};
+int16_t adcValue[2] = {0};
 
-Angle_t angleImu;
+Angle_t angleImu = {
+    .x = 0.0,
+    .y = 0.0,
+    .z = 0.0,
+};
 
-volatile bool ledState = 0;
-
+volatile bool ledValBlink = 0;
+bool userStatusCallback(struct repeating_timer *t);
 
 void setupBoard() {
     #if DEBUG == true
@@ -72,7 +78,7 @@ void setupBoard() {
     // Init I2C0 (dedicated to GNSS and sensor board)
     Wire.setSDA(I2C0_SDA);
     Wire.setSCL(I2C0_SCL);
-    Wire.setClock(400000);
+    Wire.setClock(100000);
     Wire.begin();
 
     // Init I2C1 (dedicated to IMU)
@@ -92,54 +98,54 @@ void setupBoard() {
         pinMode(ledPins[iLed], OUTPUT);
         digitalWrite(ledPins[iLed], 1);
     }
+
+    pinMode(PICO_BUTTON_PIN, INPUT_PULLUP);
 }
 
-bool ledCallback(struct repeating_timer *t) {
-    ledState = !ledState;
+bool userStatusCallback(struct repeating_timer *t) {
+    ledValBlink = !ledValBlink;
     for(uint8_t iLed = 0; iLed < 3; iLed++) {
-        // Serial.print("LED ");
+        // Serial.print(F("LED "));
         // Serial.print(iLed);
         // Serial.print(" : ");
+        // Serial.print(ledStatus[iLed]);
+        // Serial.println("");
         if(ledStatus[iLed] == NO_LED) {
             // Serial.println("NO LED");
             digitalWrite(ledPins[iLed], 1);
         } else if (ledStatus[iLed] == BLINK_LED) {
             // Serial.println("BLINK LED");
-            digitalWrite(ledPins[iLed], ledState);
-        } else {
+            digitalWrite(ledPins[iLed], ledValBlink);
+        } else if (ledStatus[iLed] == FIXED_LED) {
             // Serial.println("FIXED LED");
             digitalWrite(ledPins[iLed], 0);
+        } else {
+            // Serial.println("BIG BUG");
         }
     }
     return true;
 }
 
 void setupSensors(void) {
-    // initSensorADC();
-    setupIMU();
+    //initSensorADC();
+    //setupIMU();
     lps22hb.begin();
 }
 
-bool sendDataCallback(struct repeating_timer *t) {
-    return true;
-}
-
 void setup() {
+    delay(1000);
+    rp2040.idleOtherCore();
     setupBoard();
-    ledStatus[GREEN_LED] = BLINK_LED;
-    add_repeating_timer_ms(500, ledCallback, NULL, &ledTimer);
     setupGNSS();
     setupRadio();
     setupSensors();
     setupFileSystem();
     ledStatus[GREEN_LED] = FIXED_LED;
-
-    add_repeating_timer_ms(500, sendDataCallback, NULL, &radioTimer);
+    add_repeating_timer_ms(500, userStatusCallback, NULL, &userStatusTimer);
+    // add_repeating_timer_ms(500, sendDataCallback, NULL, &radioTimer);
 }
 
 void loop() {
-
-    ledStatus[GREEN_LED] = FIXED_LED;
     currTime = rp2040.getCycleCount64();
 
     // while(Serial.)
@@ -153,10 +159,32 @@ void loop() {
     //     // ledStatus[1] = FIXED_LED;
     // }
 
-    computeAngle(&angleImu);
+
+    Serial.print("PIN : ");
+    Serial.println(digitalRead(PICO_BUTTON_PIN));
+    delay(500);
 
     if (((currTime-prevTime) / (rp2040.f_cpu()/1000.0)) > 500) {
         prevTime = currTime;
+        
+        DataFile_t dataFile = {
+            .rocketSts   = 0,
+            .gnssLat = 0,
+            .gnssLon = 1,
+            .gnssAlt = 1,
+            .pressure    = 0,
+            .temperature = 0,
+            .accX    = 0,
+            .accY    = 0,
+            .accZ    = 0,
+            .gyrX    = 0,
+            .gyrY    = 0,
+            .gyrZ    = 0,
+            .sensorAdc0  = 0,
+            .sensorAdc1  = 1,
+        };
+        writeDataToBufferFile(&dataFile);
+        // writeBufferToFile(&dataFile, sizeof(DataFile_t));
 
         getGNSS(&gnssData);
         if (gnssData.siv > 0) {
@@ -167,10 +195,23 @@ void loop() {
             gnssValid = 0;
         }
 
+        // for(uint8_t iLed = 0; iLed < 3; iLed++) {
+        //     Serial.print("LED ");
+        //     Serial.print(iLed);
+        //     Serial.print(" : ");
+        //     Serial.println(ledStatus[iLed]);
+        // }
+
         // Serial.println(lps22hb.readPressure());
         // Serial.println(lps22hb.readTemperature());
 
         // getSensorADCValue(adcValue);
+        Serial.print("[ADC] ADC0 : ");
+        Serial.println(adcValue[0]*3);
+        Serial.print("[ADC] ADC1 : ");
+        Serial.println(adcValue[1]*3);
+        Serial.print("[PRESSURE] AMB : ");
+        Serial.println(lps22hb.readPressure());
 
         #if defined(MSE)
         radioData.id = 1;
@@ -181,8 +222,8 @@ void loop() {
         radioData.gnssValid = gnssValid;
         radioData.lat = gnssData.lat;
         radioData.lon = gnssData.lon;
-        radioData.pressure = lps22hb.readRawPressure();
-        radioData.temp = lps22hb.readRawTemperature();
+        // radioData.pressure = lps22hb.readRawPressure();
+        // radioData.temp = lps22hb.readRawTemperature();
         radioData.annex0 = adcValue[0];
         radioData.annex1 = adcValue[1];
         radioData.angleX = angleImu.x;
@@ -194,11 +235,11 @@ void loop() {
     // delay(2000);
 }
 
-void setup1(void) {
+// void setup1(void) {
+//     // setupFileSystem();
+// }
 
-}
+// void loop1(void) {
 
-void loop1(void) {
-
-}
+// }
 

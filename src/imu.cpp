@@ -31,13 +31,9 @@ static Kalman_t kalmanY = {
 // double kalmanAngleX;
 // double kalmanAngleY;
 
-Angle_t angle = {
-    .x = 0.0,
-    .y = 0.0,
-    .z = 0.0,
-};
-
 Imu_t imuData;
+
+bool imuInitialised = 0;
 
 void setupIMU() {
     if(imu.readByte(MPU9250_1_ADDRESS, WHO_AM_I_MPU9250) == WHO_AM_I_MPU9250_VAL) {
@@ -46,7 +42,9 @@ void setupIMU() {
         #if DEBUG == true
         Serial.println(F("[IMU] Init done"));
         #endif
+        imuInitialised = 1;
     } else {
+        imuInitialised = 0;
         #if DEBUG == true
         Serial.println(F("[IMU] Init failed /!\\"));
         #endif

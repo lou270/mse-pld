@@ -21,7 +21,7 @@ typedef struct {
 } GNSS_t;
 
 void setupGNSS(void);
-void getGNSS(GNSS_t *gnssVal);
+void getGNSS(GNSS_t *gnssData);
 
 #endif
 

@@ -7,43 +7,43 @@
 ******************************/
 #include "file.h"
 
-volatile bool usbPluged = false;
+FSInfo64 fsinfo;
 
-void usbPlugedCallback(uint32_t data) {
-    // Tell my app not to write to flash, we're connected
-    // Serial.println("[FileSystem] USB mounted");
-}
-
-void usbUnplugedCallback(uint32_t data) {
-    // I can start writing to flash again
-    // Serial.println("[FileSystem] USB unmounted");
-}
-
-void usbDeleteFileCallback(uint32_t data) {
-    // Maybe LittleFS.remove("myfile.txt")?  or do nothing
-    // Serial.print("[FileSystem] Delete file: ");
-    // Serial.println(data);
-}
+uint8_t bufFile[sizeof(DataFile_t)*(uint16_t)(FLASH_SECTOR_SIZE/sizeof(DataFile_t))] = {0};
+uint16_t currOffBufFile = 0;
 
 void setupFileSystem() {
+    #if DEBUG == true
+    Serial.print("[FS] Initialisation ... ");
+    #endif
+
     LittleFSConfig cfg;
     cfg.setAutoFormat(false);
     LittleFS.setConfig(cfg);
-    Serial.println(LittleFS.begin());
-    singleFileDrive.onPlug(usbPlugedCallback);
-    singleFileDrive.onUnplug(usbUnplugedCallback);
-    singleFileDrive.onDelete(usbDeleteFileCallback);
-    Serial.println(singleFileDrive.begin("littlefsfile.csv", "DataRecorder.csv"));
-    File f = LittleFS.open("littlefsfile.csv", "w");
-    f.printf("1DSFSFG");
+    LittleFS.begin();
+
+    #if DEBUG == true
+    Serial.println("done");
+    #endif
+}
+
+void writeDataToBufferFile(DataFile_t* df) {
+    memcpy(bufFile+(currOffBufFile*sizeof(DataFile_t)), df, sizeof(DataFile_t));
+    if (currOffBufFile >= (uint16_t)(FLASH_SECTOR_SIZE/sizeof(DataFile_t))-1) {
+        currOffBufFile = 0;
+        writeBufferToFile(bufFile, sizeof(bufFile));
+    } else {
+        currOffBufFile++;
+    }
+}
+
+void writeBufferToFile(void *buffer, uint32_t bufSize) {
+    uint64_t t0 = rp2040.getCycleCount64();
+    noInterrupts();
+    File f = LittleFS.open("testData2.bin", "a");
+    f.write((uint8_t*) buffer, bufSize);
     f.close();
     interrupts();
+    uint64_t t1 = rp2040.getCycleCount64();
+    Serial.printf("\n[FILE] Write in : %d \n\n", (t1-t0));
 }
-
-bool dataWriterCallback(struct repeating_timer *t) {
-    //   boolean wut = digitalRead(PICO_LED_PIN);
-    //   digitalWrite(PICO_LED_PIN,!wut);
-    return true;
-}
-
-

@@ -27,7 +27,7 @@
 #define SPI1_SCLK 10
 
 // IMU Pins
-#define MPU_INT_PIN 6
+#define MPU_INT_PIN 4
 
 // Specific radio module
 #define RADIO_CS_PIN 13
@@ -53,9 +53,6 @@
 // PICO Board
 #define PICO_LED_PIN 25
 #define PICO_BUTTON_PIN 24
-
-// LED
-#define PICO_LED_PIN 25
 
 // ==== Sensor board
 #define ADC_0_ADDRESS 0b1001001

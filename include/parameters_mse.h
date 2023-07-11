@@ -8,6 +8,7 @@
 
 // Debug
 #define DEBUG true
+// #define DEBUG_RP2040_PORT Serial
 
 // LORA conf
 #define LORA_FREQ 869.4

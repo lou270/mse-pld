@@ -17,7 +17,7 @@
 
 // void setupSensors(void);
 void initSensorADC(void);
-void getSensorADCValue(uint16_t *adcValue);
+void getSensorADCValue(int16_t *adcValue);
 
 #endif
 

@@ -13,12 +13,31 @@
 #include "board.h"
 #include "parameters.h"
 #include <LittleFS.h>
-#include <SingleFileDrive.h>
+// #include "hardware/sync.h"
+#include "hardware/flash.h"
+
+// #define FS_FLASH_START_OFF 1*1024*1024 // Sketch size: 1 MB
+// #define FS_FLASH_SIZE 15*1024*1024 // FS size: 15 MB
+
+typedef struct {
+    uint64_t rocketSts;
+    int32_t gnssLat;
+    int32_t gnssLon;
+    int32_t gnssAlt;
+    int16_t pressure;
+    int16_t temperature;
+    int16_t accX;
+    int16_t accY;
+    int16_t accZ;
+    int16_t gyrX;
+    int16_t gyrY;
+    int16_t gyrZ;
+    int16_t sensorAdc0;
+    int16_t sensorAdc1;
+} DataFile_t;
 
 void setupFileSystem();
-void usbPlugedCallback(uint32_t data);
-void usbUnplugedCallback(uint32_t data);
-void usbDeleteFileCallback(uint32_t data);
-bool dataWriterCallback(struct repeating_timer *t);
+void writeDataToBufferFile(DataFile_t* df);
+void writeBufferToFile(void *buffer, uint32_t bufSize);
 
 #endif

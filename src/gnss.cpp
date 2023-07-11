@@ -56,21 +56,21 @@ void setupGNSS() {
     #endif
 }
 
-void getGNSS(GNSS_t *gnssVal) {
+void getGNSS(GNSS_t *gnssData) {
     #if DEBUG == true
     Serial.print(F("[MAX10S] Checking gps data...\n"));
     #endif
     if(gnss.getPVT()) {
-        gnssVal->lat = gnss.getLatitude();
-        gnssVal->lon = gnss.getLongitude();
-        gnssVal->siv = gnss.getSIV();
+        gnssData->lat = gnss.getLatitude();
+        gnssData->lon = gnss.getLongitude();
+        gnssData->siv = gnss.getSIV();
         #if DEBUG == true
         Serial.print(F("[MAX10S] Lat: "));
-        Serial.print(gnssVal->lat*1e-7);
+        Serial.print(gnssData->lat*1e-7);
         Serial.print(F(" | Lon: "));
-        Serial.print(gnssVal->lon*1e-7);
+        Serial.print(gnssData->lon*1e-7);
         Serial.print(F(" | SiV: "));
-        Serial.println(gnssVal->siv);
+        Serial.println(gnssData->siv);
         #endif
     }
 }
