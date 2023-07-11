@@ -1,6 +1,6 @@
 /******************************
 | Project       : MSE Avionics
-| Board         : SEQ
+| Board         : SEQ/PLD
 | Description   : IMU board
 | Licence       : CC BY-NC-SA 
 | https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode
@@ -9,11 +9,9 @@
 
 MPU9250 imu(MPU_INT_PIN);
 
-float magCalib[3] = {0};
-
+static float magCalib[3] = {0};
 static uint64_t timer = 0;
-
-#define RAD_TO_DEG 57.295779513082320876798154814105
+bool imuInitialised = 0;
 
 /* initialiaze the X axis Kalman */
 static Kalman_t kalmanX = {
@@ -27,13 +25,6 @@ static Kalman_t kalmanY = {
     .Q_bias    = 0.003f,
     .R_measure = 0.03f,
 };
-
-// double kalmanAngleX;
-// double kalmanAngleY;
-
-Imu_t imuData;
-
-bool imuInitialised = 0;
 
 void setupIMU() {
     if(imu.readByte(MPU9250_1_ADDRESS, WHO_AM_I_MPU9250) == WHO_AM_I_MPU9250_VAL) {
@@ -99,6 +90,7 @@ void readIMUData() {
  * @return      Angle computed 
  * ************************************************************* **/
 void computeAngle(Angle_t *angle) {
+    Imu_t imuData;
     imu.readAccelData(MPU9250_1_ADDRESS, &imuData.raw_ax);
     imu.readGyroData(MPU9250_1_ADDRESS, &imuData.raw_gx);
     rawToSi(&imuData);

@@ -17,6 +17,7 @@
 typedef struct {
     int32_t lat; // latitude
     int32_t lon; // longitude
+    int32_t alt; // altitude
     uint8_t siv; // Satelite in view
 } GNSS_t;
 

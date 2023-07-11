@@ -10,10 +10,10 @@
 // Radio LORA
 SX1276 radio = new Module(RADIO_CS_PIN, RADIO_DIO1_PIN, RADIO_RESET_PIN, RADIO_DIO0_PIN, SPI1, RADIOLIB_DEFAULT_SPI_SETTINGS);
 
-uint8_t frameToSend[16] = {0};
+// uint8_t frameToSend[16] = {0};
 volatile bool sendDoneFlag = true;
 
-void setupRadio() {
+void setupRadio(void) {
     // Radio init
     #if DEBUG == true
     Serial.print(F("[RADIO] Initializing... "));
@@ -35,30 +35,32 @@ void setupRadio() {
         }
     } while(state);
 
-    // radio.setPacketSentAction(sendDoneCallback);
+    radio.setPacketSentAction(sendDoneCallback);
 
     #if DEBUG == true
     Serial.println(F("[RADIO] SX1276 init done"));
     #endif
 }
 
-void sendDoneCallback() {
+void sendDoneCallback(void) {
     sendDoneFlag = true;
 }
 
 
-uint8_t radioSend(TmData_t *tm) {
+uint8_t radioSend(TmData_t* tm) {
     #if DEBUG == true
-    Serial.print(F("[SX1276] Transmitting packet ... "));
+    Serial.print(F("[SX1276] Start transmitting packet ..."));
     #endif
 
-    int state;
-    // if(sendDoneFlag) {
-        encodeFrame(tm);
-        state = radio.transmit(frameToSend, 26);
-    // } else {
-        // return -1;
-    // }
+    uint8_t state;
+    if(sendDoneFlag) {
+        state = radio.startTransmit((uint8_t*)tm, sizeof(TmData_t));
+        if (state == 0) {
+            sendDoneFlag = false;
+        }
+    } else {
+        return -1;
+    }
 
     #if DEBUG == true
     if (state == RADIOLIB_ERR_NONE) {
@@ -82,38 +84,10 @@ uint8_t radioSend(TmData_t *tm) {
     Serial.println(F(""));
     #endif
 
-    return 0;
+    return state;
 }
 
-void encodeFrame(TmData_t *tm) {
-    frameToSend[0]  = tm->id & 0x3;
-    frameToSend[1]  = (tm->gnssValid & 0x1) << 3 + tm->rocketSts;
-    frameToSend[2]  = tm->lat >> 24 & 0xFF;
-    frameToSend[3]  = tm->lat >> 16 & 0xFF;
-    frameToSend[4]  = tm->lat >> 8 & 0xFF;
-    frameToSend[5]  = tm->lat >> 0 & 0xFF;
-    frameToSend[6]  = tm->lon >> 24 & 0xFF;
-    frameToSend[7]  = tm->lon >> 16 & 0xFF;
-    frameToSend[8]  = tm->lon >> 8 & 0xFF;
-    frameToSend[9]  = tm->lon >> 0 & 0xFF;
-    frameToSend[10] = tm->pressure >> 24 & 0xFF;
-    frameToSend[11] = tm->pressure >> 16 & 0xFF;
-    frameToSend[12] = tm->pressure >> 8 & 0xFF;
-    frameToSend[13] = tm->pressure >> 0 & 0xFF;
-    frameToSend[14] = tm->temp >> 8 & 0xFF;
-    frameToSend[15] = tm->temp >> 0 & 0xFF;
-    frameToSend[16] = tm->annex0 >> 8 & 0xFF;
-    frameToSend[17] = tm->annex0 >> 0 & 0xFF;
-    frameToSend[18] = tm->annex1 >> 8 & 0xFF;
-    frameToSend[19] = tm->annex1 >> 0 & 0xFF;
-    frameToSend[20] = tm->angleX >> 8 & 0xFF;
-    frameToSend[21] = tm->angleX >> 0 & 0xFF;
-    frameToSend[22] = tm->angleY >> 8 & 0xFF;
-    frameToSend[23] = tm->angleY >> 0 & 0xFF;
-    frameToSend[24] = tm->angleZ >> 8 & 0xFF;
-    frameToSend[25] = tm->angleZ >> 0 & 0xFF;
+uint8_t encodeRocketSts(uint8_t id, uint8_t gnssValid, uint8_t status) {
+    return (id & 0x3) << 6 | (gnssValid & 0x1) << 3 | (status & 0x7);
 }
-
-
-
 

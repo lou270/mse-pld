@@ -21,40 +21,49 @@
 #include "file.h"
 
 /* TODO
-* Add communication SEQ<->PLD
-* Add sensor data saving
+* Add sensor data acquisition
 */
 
-// Pressure sensor
-LPS22HB lps22hb(Wire1);
-
-// SEQ<->PLD UART (from PIO UART)
-// SerialPIO SeqPldCom(SEQ_PLD_UART_TX_PIN, SEQ_PLD_UART_RX_PIN, 64);
-
+// LED status
 typedef enum {NO_LED = 0, BLINK_LED = 1, FIXED_LED = 2} LedStatus_t;
 enum {RED_LED = 0, GREEN_LED = 1, BLUE_LED = 2};
 const uint8_t ledPins[3] = {RGB_LED_R_PIN, RGB_LED_G_PIN, RGB_LED_B_PIN};
 volatile LedStatus_t ledStatus[3] = {NO_LED};
-struct repeating_timer userStatusTimer;
+struct repeating_timer ledStatusTimer;
+volatile bool ledValBlink = 0;
 
-struct repeating_timer radioTimer;
-bool launchDetected = false;
+// Utils
+uint64_t currTime = 0;
+uint64_t prevTimeRadio, prevTimeGnss = 0;
 
-uint64_t currTime, prevTime = 0;
+// SEQ-PLD comms
+uint8_t seqData[1];
 
+// TM
 TmData_t radioData;
+// struct repeating_timer radioTimer;
+
+// Sensors and status
+typedef enum {PRE_FLIGHT = 0, ASCEND = 1, DESCEND = 2, TOUCHDOWN = 3} RocketStatus_t;
+RocketStatus_t rocketSts = PRE_FLIGHT;
+bool launchDetected = false;
 GNSS_t gnssData;
 bool gnssValid = 0;
-int16_t adcValue[2] = {0};
-
+Imu_t imuData;
 Angle_t angleImu = {
     .x = 0.0,
     .y = 0.0,
     .z = 0.0,
 };
+LPS22HB lps22hb(Wire1); // Pressure sensor
+    int32_t pressure; // ambiant pressure
+    int16_t temp; // ambiant temperature 
+int16_t adcValue[2] = {0};
 
-volatile bool ledValBlink = 0;
-bool userStatusCallback(struct repeating_timer *t);
+// Save data
+DataFile_t dataFile;
+
+bool ledStatusCallback(struct repeating_timer *t);
 
 void setupBoard() {
     #if DEBUG == true
@@ -67,7 +76,11 @@ void setupBoard() {
     Serial1.setRX(SEQ_PLD_UART_RX_PIN);
     Serial1.setTX(SEQ_PLD_UART_TX_PIN);
     Serial1.setFIFOSize(128);
+    Serial1.setTimeout(100); // [ms]
     Serial1.begin(115200);
+
+    // Serial2 (dedicated to GNSS)
+    // Initialised in setupGNSS()
 
     // Init SPI1 (dedicated to radio)
     SPI1.setRX(SPI1_MISO);
@@ -102,7 +115,7 @@ void setupBoard() {
     pinMode(PICO_BUTTON_PIN, INPUT_PULLUP);
 }
 
-bool userStatusCallback(struct repeating_timer *t) {
+bool ledStatusCallback(struct repeating_timer *t) {
     ledValBlink = !ledValBlink;
     for(uint8_t iLed = 0; iLed < 3; iLed++) {
         // Serial.print(F("LED "));
@@ -127,65 +140,54 @@ bool userStatusCallback(struct repeating_timer *t) {
 }
 
 void setupSensors(void) {
-    //initSensorADC();
-    //setupIMU();
+    setupSensorAdc();
+    setupIMU();
     lps22hb.begin();
 }
 
 void setup() {
     delay(1000);
-    rp2040.idleOtherCore();
+
     setupBoard();
     setupGNSS();
     setupRadio();
     setupSensors();
-    setupFileSystem();
+
+    // Init LEDs
     ledStatus[GREEN_LED] = FIXED_LED;
-    add_repeating_timer_ms(500, userStatusCallback, NULL, &userStatusTimer);
-    // add_repeating_timer_ms(500, sendDataCallback, NULL, &radioTimer);
+    add_repeating_timer_ms(500, ledStatusCallback, NULL, &ledStatusTimer);
+}
+
+bool getDelayNonBlocking(uint64_t* cTime, uint64_t* pTime, uint64_t delay) {
+    if (((*cTime-*pTime) / (rp2040.f_cpu()/1000.0)) > delay) {
+        *pTime = *cTime;
+        return true;
+    } else {
+        return false;
+    }
 }
 
 void loop() {
     currTime = rp2040.getCycleCount64();
 
-    // while(Serial.)
-    // while(!launchDetected) {
-    //     // wait to receive launch detection
-    //     // TODO launch detect
+    if (Serial1.available()) {
+        Serial1.readBytes(seqData, 1);
+        rocketSts = (RocketStatus_t)(seqData[0] & 0x7);
+        if (rocketSts == PRE_FLIGHT) {
+            ledStatus[GREEN_LED] = FIXED_LED;
+        } else {
+            ledStatus[GREEN_LED] = BLINK_LED;
+        }
+    }
 
-    //     // temporary
-    //     delay(2000);
-    //     launchDetected = true;
-    //     // ledStatus[1] = FIXED_LED;
-    // }
+    // Get sensor data
+    if (getDelayNonBlocking(&currTime, &prevTimeGnss, 1000/FREQ_SENSOR_ACQ)) {
+        // TODO get data
+        // dataFile.
+    }
 
-
-    Serial.print("PIN : ");
-    Serial.println(digitalRead(PICO_BUTTON_PIN));
-    delay(500);
-
-    if (((currTime-prevTime) / (rp2040.f_cpu()/1000.0)) > 500) {
-        prevTime = currTime;
-        
-        DataFile_t dataFile = {
-            .rocketSts   = 0,
-            .gnssLat = 0,
-            .gnssLon = 1,
-            .gnssAlt = 1,
-            .pressure    = 0,
-            .temperature = 0,
-            .accX    = 0,
-            .accY    = 0,
-            .accZ    = 0,
-            .gyrX    = 0,
-            .gyrY    = 0,
-            .gyrZ    = 0,
-            .sensorAdc0  = 0,
-            .sensorAdc1  = 1,
-        };
-        writeDataToBufferFile(&dataFile);
-        // writeBufferToFile(&dataFile, sizeof(DataFile_t));
-
+    // Get data from GNSS
+    if (getDelayNonBlocking(&currTime, &prevTimeGnss, 1000/FREQ_DATA_GNSS)) {
         getGNSS(&gnssData);
         if (gnssData.siv > 0) {
             ledStatus[BLUE_LED] = FIXED_LED;
@@ -194,52 +196,43 @@ void loop() {
             ledStatus[BLUE_LED] = BLINK_LED;
             gnssValid = 0;
         }
+    }
 
-        // for(uint8_t iLed = 0; iLed < 3; iLed++) {
-        //     Serial.print("LED ");
-        //     Serial.print(iLed);
-        //     Serial.print(" : ");
-        //     Serial.println(ledStatus[iLed]);
-        // }
-
-        // Serial.println(lps22hb.readPressure());
-        // Serial.println(lps22hb.readTemperature());
-
-        // getSensorADCValue(adcValue);
-        Serial.print("[ADC] ADC0 : ");
-        Serial.println(adcValue[0]*3);
-        Serial.print("[ADC] ADC1 : ");
-        Serial.println(adcValue[1]*3);
-        Serial.print("[PRESSURE] AMB : ");
-        Serial.println(lps22hb.readPressure());
-
+    // Send TM
+    if (getDelayNonBlocking(&currTime, &prevTimeRadio, 1000/FREQ_SEND_TM)) {       
+        uint8_t id = 0;
         #if defined(MSE)
-        radioData.id = 1;
+        id = 1;
         #elif defined(KRYPTONIT)
-        radioData.id = 2;
+        id = 2;
         #endif
-        radioData.rocketSts = 0;
-        radioData.gnssValid = gnssValid;
-        radioData.lat = gnssData.lat;
-        radioData.lon = gnssData.lon;
-        // radioData.pressure = lps22hb.readRawPressure();
-        // radioData.temp = lps22hb.readRawTemperature();
-        radioData.annex0 = adcValue[0];
-        radioData.annex1 = adcValue[1];
-        radioData.angleX = angleImu.x;
-        radioData.angleY = angleImu.y;
-        radioData.angleZ = angleImu.z;
+        radioData.rocketSts     = encodeRocketSts(id, gnssValid, (uint8_t)rocketSts);
+        radioData.gnssLat       = gnssData.lat;
+        radioData.gnssLon       = gnssData.lon;
+        radioData.gnssAlt       = gnssData.alt;
+        radioData.pressure      = lps22hb.readRawPressure();
+        radioData.temp          = lps22hb.readRawTemperature();
+        radioData.accX          = imuData.ax;
+        radioData.accY          = imuData.ay;
+        radioData.accZ          = imuData.az;
+        radioData.angleX        = angleImu.x;
+        radioData.angleY        = angleImu.y;
+        radioData.angleZ        = angleImu.z;
+        radioData.sensorAdc0    = adcValue[0];
+        radioData.sensorAdc1    = adcValue[1];
 
         radioSend(&radioData);
     }
-    // delay(2000);
 }
 
-// void setup1(void) {
-//     // setupFileSystem();
-// }
+void setup1(void) {
+    setupFileSystem();
+}
 
-// void loop1(void) {
-
-// }
+void loop1(void) {
+    uint32_t pDataFile;
+    if (rp2040.fifo.pop_nb(&pDataFile)) {
+        writeDataToBufferFile((DataFile_t*)pDataFile);
+    }
+}
 

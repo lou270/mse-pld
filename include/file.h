@@ -20,7 +20,7 @@
 // #define FS_FLASH_SIZE 15*1024*1024 // FS size: 15 MB
 
 typedef struct {
-    uint64_t rocketSts;
+    uint64_t rocketSts; // Time + status
     int32_t gnssLat;
     int32_t gnssLon;
     int32_t gnssAlt;

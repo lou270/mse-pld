@@ -1,6 +1,6 @@
 /******************************
 | Project       : MSE Avionics
-| Board         : SEQ
+| Board         : PLD
 | Description   : File management
 | Licence       : CC BY-NC-SA 
 | https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode

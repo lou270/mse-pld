@@ -17,3 +17,12 @@
 #define LORA_OCP 240
 #define LORA_SF 9 // Spreding factor
 
+// TM
+#define FREQ_SEND_TM 4 // [Hz]
+
+// GNSS
+#define FREQ_DATA_GNSS 5 // [Hz]
+
+// Sensor data acquisition
+#define FREQ_SENSOR_ACQ 800 // [Hz]
+

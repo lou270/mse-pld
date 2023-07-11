@@ -6,12 +6,12 @@
 | https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode
 ******************************/
 #include <sensors.h>
-#define KRYPTONIT
+
 // ADC sensor board
 ADS1014 sensorAdc0;
 ADS1014 sensorAdc1;
 
-void initSensorADC(void) {
+void setupSensorAdc(void) {
     sensorAdc0.attach(Wire);
     sensorAdc0.setAddress(ADC_0_ADDRESS);
     sensorAdc0.gain(ADS1x1x::ConfigPGA::FSR_6_144V);
@@ -37,5 +37,3 @@ void getSensorADCValue(int16_t *adcValue) {
     adcValue[1] = sensorAdc1.read();
     #endif
 }
-
-
