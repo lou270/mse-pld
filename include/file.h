@@ -24,7 +24,7 @@ typedef struct {
     int32_t gnssLat;
     int32_t gnssLon;
     int32_t gnssAlt;
-    int16_t pressure;
+    int32_t pressure;
     int16_t temperature;
     int16_t accX;
     int16_t accY;
@@ -34,6 +34,7 @@ typedef struct {
     int16_t gyrZ;
     int16_t sensorAdc0;
     int16_t sensorAdc1;
+    // Be careful to be align with 64 bits 
 } DataFile_t;
 
 void setupFileSystem();

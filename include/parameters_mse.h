@@ -7,8 +7,10 @@
 ******************************/
 
 // Debug
-#define DEBUG true
-// #define DEBUG_RP2040_PORT Serial
+// #define DEBUG true
+
+// ID
+#define PROJECT_ID 1
 
 // LORA conf
 #define LORA_FREQ 869.4

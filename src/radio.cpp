@@ -66,10 +66,6 @@ uint8_t radioSend(TmData_t* tm) {
     if (state == RADIOLIB_ERR_NONE) {
         // the packet was successfully transmitted
         Serial.print(F(" success!"));
-        // print measured data rate 
-        Serial.print(F(" (Datarate: "));
-        Serial.print(radio.getDataRate());
-        Serial.print(F(" bps)"));
     } else if (state == RADIOLIB_ERR_PACKET_TOO_LONG) {
         // the supplied packet was longer than 256 bytes
         Serial.print(F("too long!"));

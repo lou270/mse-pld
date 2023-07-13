@@ -15,25 +15,33 @@ void setupGNSS() {
     Serial.println(F("[GNSS] Initializing..."));
     // gnss.enableDebugging(); // Uncomment this line to enable debug messages on Serial
     #endif
+
+    uint8_t gnssTry = 5;
     
     do {
+      #if DEBUG == true
       Serial.println(F("[GNSS] trying 115200 baud"));
+      #endif
       Serial2.begin(115200);
       if (gnss.begin(Serial2) == true) 
         break;
       delay(100);
+      #if DEBUG == true
       Serial.println(F("[GNSS] trying 9600 baud"));
+      #endif
       Serial2.begin(9600);
       if (gnss.begin(Serial2) == true) {
+        #if DEBUG == true
         Serial.println(F("[GNSS] u-blox MAX10S detected"));
         Serial.println("[GNSS] Connected at 9600 baud, switching to 115200");
+        #endif
         gnss.setSerialRate(115200);
         delay(100);
       } else {
         //gnss.factoryDefault();
         delay(2000); //Wait a bit before trying again to limit the Serial output
       }
-    } while(1);
+    } while(gnssTry--);
 
     // gnss.setI2COutput(COM_TYPE_NMEA); //Set the I2C port to output both NMEA and UBX messages
     gnss.setUART1Output(COM_TYPE_UBX); //Set the UART port to output NMEA only

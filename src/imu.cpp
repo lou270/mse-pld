@@ -42,45 +42,28 @@ void setupIMU() {
     }
 }
 
-void readIMUData() {
-    int16_t accel[3], gyro[3], mag[3] = {0};
-
+void getImuData(Imu_t* imuData, bool acqMag) {
     #if DEBUG == true
-    uint64_t firstTime = rp2040.getCycleCount64();
+    // uint64_t firstTime = rp2040.getCycleCount64();
     #endif
 
-    imu.readAccelData(MPU9250_1_ADDRESS, accel);
-    imu.readGyroData(MPU9250_1_ADDRESS, gyro);
-    imu.readMagData(MPU9250_1_ADDRESS, mag);
+    imu.readAccelData(MPU9250_1_ADDRESS, &imuData->raw_ax);
+    imu.readGyroData(MPU9250_1_ADDRESS, &imuData->raw_gx);
+    if (acqMag) {
+        imu.readMagData(MPU9250_1_ADDRESS, &imuData->raw_mx);
+    }
 
     #if DEBUG == true
-    uint64_t lastTime = rp2040.getCycleCount64();
+    // uint64_t lastTime = rp2040.getCycleCount64();
     #endif
     
-    float ax, ay, az, gx, gy, gz, mx, my, mz = 0;
-
-    ax = accel[0]*imu.getAres(IMU_ACC_RES);
-    ay = accel[1]*imu.getAres(IMU_ACC_RES);
-    az = accel[2]*imu.getAres(IMU_ACC_RES);
-    gx = gyro[0]*imu.getGres(IMU_GYRO_RES);
-    gy = gyro[1]*imu.getGres(IMU_GYRO_RES);
-    gz = gyro[2]*imu.getGres(IMU_GYRO_RES);
-    mx = mag[0]*imu.getMres(IMU_MAG_RES);
-    my = mag[1]*imu.getMres(IMU_MAG_RES);
-    mz = mag[2]*imu.getMres(IMU_MAG_RES);
+    rawToSi(imuData);
     
     #if DEBUG == true
-        char txt[60] = "";
-        sprintf(txt, "[IMU] ax: %.2f | ay: %.2f | az: %.2f", ax, ay, az);
-        Serial.println(txt);
-        sprintf(txt, "[IMU] gx: %.2f | gy: %.2f | gz: %.2f", gx, gy, gz);
-        Serial.println(txt);
-        sprintf(txt, "[IMU] mx: %.2f | my: %.2f | mz: %.2f", mx, my, mz);
-        Serial.println(txt);
-        Serial.print("[IMU] Time acq : ");
-        // sprintf(txt, "%.3f")
-        Serial.println((lastTime-firstTime)*1000.0/rp2040.f_cpu());
-        delay(1000);
+        Serial.printf("[IMU] ax: %.2f | ay: %.2f | az: %.2f\n", imuData->ax, imuData->ay, imuData->az);
+        Serial.printf("[IMU] gx: %.2f | gy: %.2f | gz: %.2f\n", imuData->gx, imuData->gy, imuData->gz);
+        Serial.printf("[IMU] mx: %.2f | my: %.2f | mz: %.2f\n", imuData->mx, imuData->my, imuData->mz);
+        // Serial.printf("[IMU] Time acq : %.2f", (lastTime-firstTime)*1000.0/rp2040.f_cpu());
     #endif
 }
 
@@ -89,45 +72,40 @@ void readIMUData() {
  * 
  * @return      Angle computed 
  * ************************************************************* **/
-void computeAngle(Angle_t *angle) {
-    Imu_t imuData;
-    imu.readAccelData(MPU9250_1_ADDRESS, &imuData.raw_ax);
-    imu.readGyroData(MPU9250_1_ADDRESS, &imuData.raw_gx);
-    rawToSi(&imuData);
-
+void computeAngle(Imu_t* imuData, Angle_t* angle) {
     // Kalman angle solve
     double dt = (double) (rp2040.getCycleCount64() - timer) / rp2040.f_cpu();
     timer = rp2040.getCycleCount64();
 
     double roll;
-    double roll_sqrt = sqrt(imuData.raw_ax * imuData.raw_ax + imuData.raw_az * imuData.raw_az);
+    double roll_sqrt = sqrt(imuData->raw_ax * imuData->raw_ax + imuData->raw_az * imuData->raw_az);
     if (roll_sqrt != 0.0) {
-        roll = atan(imuData.raw_ay / roll_sqrt) * RAD_TO_DEG;
+        roll = atan(imuData->raw_ay / roll_sqrt) * RAD_TO_DEG;
     } 
 	else {
         roll = 0.0;
     }
 
-    double pitch = atan2(-imuData.raw_ax, imuData.raw_az) * RAD_TO_DEG;
+    double pitch = atan2(-imuData->raw_ax, imuData->raw_az) * RAD_TO_DEG;
     if((pitch < -90 && angle->y > 90) 
 	    || (pitch > 90 && angle->y < -90)) {
         kalmanY.angle = pitch;
         angle->y = pitch;
     }  
 	else {
-        angle->y = getAngleKalman(&kalmanY, pitch, imuData.gy, dt);
+        angle->y = getAngleKalman(&kalmanY, pitch, imuData->gy, dt);
     }
 
     if (fabs(angle->y) > 90) 
-        imuData.gx = -imuData.gx;
-    angle->x = getAngleKalman(&kalmanX, roll, imuData.gy, dt);
+        imuData->gx = -imuData->gx;
+    angle->x = getAngleKalman(&kalmanX, roll, imuData->gy, dt);
 
 
-    // double yaw = atan2(imuData.raw_ax, imuData.raw_ay) * RAD_TO_DEG;
-    // double pitch = atan2(imuData.raw_az, imuData.raw_ay) * RAD_TO_DEG;
+    // double yaw = atan2(imuData->raw_ax, imuData->raw_ay) * RAD_TO_DEG;
+    // double pitch = atan2(imuData->raw_az, imuData->raw_ay) * RAD_TO_DEG;
 
-    // angle->x = getAngleKalman(&kalmanX, yaw, imuData.gz, dt);
-    // angle->y = getAngleKalman(&kalmanY, pitch, imuData.gx, dt);
+    // angle->x = getAngleKalman(&kalmanX, yaw, imuData->gz, dt);
+    // angle->y = getAngleKalman(&kalmanY, pitch, imuData->gx, dt);
 }
 
 void rawToSi(Imu_t *imuData) {

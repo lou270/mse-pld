@@ -54,9 +54,9 @@ typedef struct {
 } Kalman_t;
 
 void setupIMU(void);
-void readIMUData(void);
-void computeAngle(Angle_t *angle);
-void rawToSi(Imu_t *imuData);
+void getImuData(Imu_t* imuData, bool acqMag);
+void rawToSi(Imu_t* imuData);
+void computeAngle(Imu_t* imuData, Angle_t *angle);
 double getAngleKalman(Kalman_t *Kalman, double newAngle, double newRate, double dt);
 
 #endif

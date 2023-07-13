@@ -7,6 +7,7 @@
 ******************************/
 #include <Arduino.h>
 #include <pico/time.h>
+#include "hardware/flash.h"
 #include <SPI.h>
 #include <Wire.h>
 #include <Adafruit_TinyUSB.h>
@@ -91,7 +92,7 @@ void setupBoard() {
     // Init I2C0 (dedicated to GNSS and sensor board)
     Wire.setSDA(I2C0_SDA);
     Wire.setSCL(I2C0_SCL);
-    Wire.setClock(100000);
+    Wire.setClock(400000);
     Wire.begin();
 
     // Init I2C1 (dedicated to IMU)
@@ -112,6 +113,11 @@ void setupBoard() {
         digitalWrite(ledPins[iLed], 1);
     }
 
+    // Setup LED Pico
+    pinMode(PICO_LED_PIN, OUTPUT);
+    digitalWrite(PICO_LED_PIN, LOW);
+
+    // Setup button Pico
     pinMode(PICO_BUTTON_PIN, INPUT_PULLUP);
 }
 
@@ -146,7 +152,7 @@ void setupSensors(void) {
 }
 
 void setup() {
-    delay(1000);
+    delay(2000);
 
     setupBoard();
     setupGNSS();
@@ -158,8 +164,8 @@ void setup() {
     add_repeating_timer_ms(500, ledStatusCallback, NULL, &ledStatusTimer);
 }
 
-bool getDelayNonBlocking(uint64_t* cTime, uint64_t* pTime, uint64_t delay) {
-    if (((*cTime-*pTime) / (rp2040.f_cpu()/1000.0)) > delay) {
+bool getDelayNonBlocking(uint64_t* cTime, uint64_t* pTime, float delay) {
+    if (((*cTime-*pTime) * 1.0 / (rp2040.f_cpu()/1000.0)) > delay) {
         *pTime = *cTime;
         return true;
     } else {
@@ -170,6 +176,7 @@ bool getDelayNonBlocking(uint64_t* cTime, uint64_t* pTime, uint64_t delay) {
 void loop() {
     currTime = rp2040.getCycleCount64();
 
+    // Get status from sequencer
     if (Serial1.available()) {
         Serial1.readBytes(seqData, 1);
         rocketSts = (RocketStatus_t)(seqData[0] & 0x7);
@@ -180,15 +187,12 @@ void loop() {
         }
     }
 
-    // Get sensor data
-    if (getDelayNonBlocking(&currTime, &prevTimeGnss, 1000/FREQ_SENSOR_ACQ)) {
-        // TODO get data
-        // dataFile.
-    }
-
     // Get data from GNSS
-    if (getDelayNonBlocking(&currTime, &prevTimeGnss, 1000/FREQ_DATA_GNSS)) {
+    if (getDelayNonBlocking(&currTime, &prevTimeGnss, 1000.0/FREQ_DATA_GNSS)) {
         getGNSS(&gnssData);
+        dataFile.gnssLat = gnssData.lat;
+        dataFile.gnssLon = gnssData.lon;
+        dataFile.gnssAlt = gnssData.alt;
         if (gnssData.siv > 0) {
             ledStatus[BLUE_LED] = FIXED_LED;
             gnssValid = 1;
@@ -198,26 +202,44 @@ void loop() {
         }
     }
 
+    // Get sensor data
+    if (getDelayNonBlocking(&currTime, &prevTimeGnss, 1000.0/FREQ_SENSOR_ACQ)) {
+        dataFile.rocketSts = (currTime << 8) & 0xFFFFFFFFFFFFFF | encodeRocketSts(PROJECT_ID, gnssValid, (uint8_t)rocketSts) & 0xFF;
+        // dataFile.pressure = lps22hb.readRawPressure();
+        // dataFile.temperature = lps22hb.readRawTemperature();
+        getImuData(&imuData, false);
+        computeAngle(&imuData, &angleImu);
+        dataFile.accX = imuData.raw_ax;
+        dataFile.accY = imuData.raw_ay;
+        dataFile.accZ = imuData.raw_az;
+        dataFile.gyrX = imuData.raw_gx;
+        dataFile.gyrY = imuData.raw_gy;
+        dataFile.gyrZ = imuData.raw_gz;
+        // getSensorADCValue(adcValue);
+        dataFile.sensorAdc0 = adcValue[0];
+        dataFile.sensorAdc1 = adcValue[1];
+
+        // Serial.println(rp2040.getCycleCount64());
+        // if (rocketSts != PRE_FLIGHT) {
+            writeDataToBufferFile(&dataFile);
+        // }
+    }
+
     // Send TM
-    if (getDelayNonBlocking(&currTime, &prevTimeRadio, 1000/FREQ_SEND_TM)) {       
+    if (getDelayNonBlocking(&currTime, &prevTimeRadio, 1000.0/FREQ_SEND_TM)) {       
         uint8_t id = 0;
-        #if defined(MSE)
-        id = 1;
-        #elif defined(KRYPTONIT)
-        id = 2;
-        #endif
-        radioData.rocketSts     = encodeRocketSts(id, gnssValid, (uint8_t)rocketSts);
+        radioData.rocketSts     = dataFile.rocketSts & 0xFF;
         radioData.gnssLat       = gnssData.lat;
         radioData.gnssLon       = gnssData.lon;
         radioData.gnssAlt       = gnssData.alt;
-        radioData.pressure      = lps22hb.readRawPressure();
-        radioData.temp          = lps22hb.readRawTemperature();
-        radioData.accX          = imuData.ax;
-        radioData.accY          = imuData.ay;
-        radioData.accZ          = imuData.az;
-        radioData.angleX        = angleImu.x;
-        radioData.angleY        = angleImu.y;
-        radioData.angleZ        = angleImu.z;
+        radioData.pressure      = dataFile.pressure;
+        radioData.temp          = dataFile.temperature;
+        radioData.accX          = imuData.raw_ax;
+        radioData.accY          = imuData.raw_ay;
+        radioData.accZ          = imuData.raw_az;
+        radioData.angleX        = (int16_t)(angleImu.x*10);
+        radioData.angleY        = (int16_t)(angleImu.y*10);
+        radioData.angleZ        = (int16_t)(angleImu.z*10);
         radioData.sensorAdc0    = adcValue[0];
         radioData.sensorAdc1    = adcValue[1];
 
@@ -230,9 +252,8 @@ void setup1(void) {
 }
 
 void loop1(void) {
-    uint32_t pDataFile;
-    if (rp2040.fifo.pop_nb(&pDataFile)) {
-        writeDataToBufferFile((DataFile_t*)pDataFile);
+    uint32_t pBuffer;
+    if (rp2040.fifo.pop_nb(&pBuffer)) {
+        writeBufferToFile((uint8_t*)pBuffer, sizeof(DataFile_t)*(uint16_t)(FLASH_SECTOR_SIZE/sizeof(DataFile_t)));
     }
 }
-
