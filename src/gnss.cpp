@@ -50,7 +50,7 @@ void setupGNSS() {
     gnss.saveConfigSelective(VAL_CFG_SUBSEC_IOPORT); //Save (only) the communications port settings to flash and BBR
 
     #if DEBUG == true
-    // gnss.setNMEAOutputPort(Serial);
+    // gnss.setUBXOutputPort(Serial);
     Serial.println(F("[GNSS] u-blox MAX10S done init."));
     #endif
 }

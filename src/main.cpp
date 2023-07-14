@@ -38,16 +38,16 @@ uint64_t currTime = 0;
 uint64_t prevTimeRadio, prevTimeGnss = 0;
 
 // SEQ-PLD comms
-uint8_t seqData[1];
+uint8_t seqData;
 
 // TM
 TmData_t radioData;
 // struct repeating_timer radioTimer;
 
 // Sensors and status
-typedef enum {PRE_FLIGHT = 0, ASCEND = 1, DESCEND = 2, TOUCHDOWN = 3} RocketStatus_t;
-RocketStatus_t rocketSts = PRE_FLIGHT;
-bool launchDetected = false;
+typedef enum {PRE_FLIGHT = 0, ASCEND, DEPLOY_ALGO, DEPLOY_TIMER, DESCEND, TOUCHDOWN} RocketState_t;
+RocketState_t rocketSts = PRE_FLIGHT;
+volatile bool launchDetected = false;
 GNSS_t gnssData;
 bool gnssValid = 0;
 Imu_t imuData;
@@ -178,11 +178,12 @@ void loop() {
 
     // Get status from sequencer
     if (Serial1.available()) {
-        Serial1.readBytes(seqData, 1);
-        rocketSts = (RocketStatus_t)(seqData[0] & 0x7);
+        Serial1.readBytes(&seqData, 1);
+        rocketSts = (RocketStatus_t)(seqData);
         if (rocketSts == PRE_FLIGHT) {
             ledStatus[GREEN_LED] = FIXED_LED;
         } else {
+            launchDetected = true;
             ledStatus[GREEN_LED] = BLINK_LED;
         }
     }
@@ -215,14 +216,17 @@ void loop() {
         dataFile.gyrX = imuData.raw_gx;
         dataFile.gyrY = imuData.raw_gy;
         dataFile.gyrZ = imuData.raw_gz;
-        // getSensorADCValue(adcValue);
+        getSensorADCValue(adcValue);
         dataFile.sensorAdc0 = adcValue[0];
         dataFile.sensorAdc1 = adcValue[1];
 
         // Serial.println(rp2040.getCycleCount64());
         // if (rocketSts != PRE_FLIGHT) {
-            writeDataToBufferFile(&dataFile);
+            // writeDataToBufferFile(&dataFile);
         // }
+        #if DEBUG == true
+        delay(500);
+        #endif
     }
 
     // Send TM

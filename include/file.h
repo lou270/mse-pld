@@ -36,6 +36,7 @@ typedef struct {
     int16_t sensorAdc1;
     // Be careful to be align with 64 bits 
 } DataFile_t;
+// ==> sizeof(DataFile_t) = 42
 
 void setupFileSystem();
 void writeDataToBufferFile(DataFile_t* df);

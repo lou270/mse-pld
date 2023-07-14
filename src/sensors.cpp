@@ -36,4 +36,8 @@ void getSensorADCValue(int16_t *adcValue) {
     #if defined(KRYPTONIT)
     adcValue[1] = sensorAdc1.read();
     #endif
+
+    #if DEBUG == true
+    Serial.printf("[ADC] ADC0: %d / ADC1: %d\n", adcValue[0], adcValue[1]);
+    #endif
 }
