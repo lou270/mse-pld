@@ -57,8 +57,8 @@ Angle_t angleImu = {
     .z = 0.0,
 };
 LPS22HB lps22hb(Wire1); // Pressure sensor
-    int32_t pressure; // ambiant pressure
-    int16_t temp; // ambiant temperature 
+int32_t pressure; // ambiant pressure
+int16_t temp; // ambiant temperature 
 int16_t adcValue[2] = {0};
 
 // Save data
@@ -66,7 +66,7 @@ DataFile_t dataFile;
 
 bool ledStatusCallback(struct repeating_timer *t);
 
-void setupBoard() {
+bool setupBoard() {
     #if DEBUG == true
     // USB UART
     Serial.begin(115200);
@@ -119,6 +119,8 @@ void setupBoard() {
 
     // Setup button Pico
     pinMode(PICO_BUTTON_PIN, INPUT_PULLUP);
+
+    return true;
 }
 
 bool ledStatusCallback(struct repeating_timer *t) {
@@ -145,22 +147,30 @@ bool ledStatusCallback(struct repeating_timer *t) {
     return true;
 }
 
-void setupSensors(void) {
-    setupSensorAdc();
-    setupIMU();
-    lps22hb.begin();
+bool setupSensors(void) {
+    bool ret = true;
+    ret &= setupSensorAdc();
+    ret &= setupIMU();
+    ret &= lps22hb.begin();
+
+    return ret;
 }
 
 void setup() {
     delay(2000);
 
-    setupBoard();
-    setupGNSS();
-    setupRadio();
-    setupSensors();
+    bool ret = true;
+    ret &= setupBoard();
+    ret &= setupGNSS();
+    ret &= setupRadio();
+    ret &= setupSensors();
 
     // Init LEDs
-    ledStatus[GREEN_LED] = FIXED_LED;
+    if (ret == false) {
+        ledStatus[RED_LED] = FIXED_LED;
+    } else {
+        ledStatus[GREEN_LED] = FIXED_LED;
+    }
     add_repeating_timer_ms(500, ledStatusCallback, NULL, &ledStatusTimer);
 }
 
@@ -178,8 +188,8 @@ void loop() {
 
     // Get status from sequencer
     if (Serial1.available()) {
-        Serial1.readBytes(&seqData, 1);
-        rocketSts = (RocketStatus_t)(seqData);
+        Serial1.readBytes(&seqData, sizeof(seqData));
+        rocketSts = (RocketState_t)(seqData);
         if (rocketSts == PRE_FLIGHT) {
             ledStatus[GREEN_LED] = FIXED_LED;
         } else {
@@ -206,8 +216,8 @@ void loop() {
     // Get sensor data
     if (getDelayNonBlocking(&currTime, &prevTimeGnss, 1000.0/FREQ_SENSOR_ACQ)) {
         dataFile.rocketSts = (currTime << 8) & 0xFFFFFFFFFFFFFF | encodeRocketSts(PROJECT_ID, gnssValid, (uint8_t)rocketSts) & 0xFF;
-        // dataFile.pressure = lps22hb.readRawPressure();
-        // dataFile.temperature = lps22hb.readRawTemperature();
+        dataFile.pressure = lps22hb.readRawPressure();
+        dataFile.temperature = lps22hb.readRawTemperature();
         getImuData(&imuData, false);
         computeAngle(&imuData, &angleImu);
         dataFile.accX = imuData.raw_ax;
@@ -220,35 +230,37 @@ void loop() {
         dataFile.sensorAdc0 = adcValue[0];
         dataFile.sensorAdc1 = adcValue[1];
 
-        // Serial.println(rp2040.getCycleCount64());
-        // if (rocketSts != PRE_FLIGHT) {
-            // writeDataToBufferFile(&dataFile);
-        // }
-        #if DEBUG == true
-        delay(500);
-        #endif
+        if (rocketSts != PRE_FLIGHT) {
+            writeDataToBufferFile(&dataFile);
+        } else {
+            // writeDataToPreFlightBufferFile(&dataFile); 
+        }
     }
 
     // Send TM
     if (getDelayNonBlocking(&currTime, &prevTimeRadio, 1000.0/FREQ_SEND_TM)) {       
-        uint8_t id = 0;
-        radioData.rocketSts     = dataFile.rocketSts & 0xFF;
+        radioData.rocketSts     = encodeRocketSts(PROJECT_ID, gnssValid, (uint8_t)rocketSts) & 0xFF;
         radioData.gnssLat       = gnssData.lat;
         radioData.gnssLon       = gnssData.lon;
-        radioData.gnssAlt       = gnssData.alt;
+        radioData.gnssAlt       = (int16_t)gnssData.alt*1000;
         radioData.pressure      = dataFile.pressure;
         radioData.temp          = dataFile.temperature;
         radioData.accX          = imuData.raw_ax;
         radioData.accY          = imuData.raw_ay;
         radioData.accZ          = imuData.raw_az;
-        radioData.angleX        = (int16_t)(angleImu.x*10);
-        radioData.angleY        = (int16_t)(angleImu.y*10);
-        radioData.angleZ        = (int16_t)(angleImu.z*10);
         radioData.sensorAdc0    = adcValue[0];
         radioData.sensorAdc1    = adcValue[1];
 
+        #if DEBUG == true
+        Serial.printf("%8X %8X %8X %4X %4X %4X %4X %4X %4X %4X %2X\n", radioData.pressure, radioData.gnssLat, radioData.gnssLon, radioData.gnssAlt, radioData.temp, radioData.accX, radioData.accY, radioData.accZ, radioData.sensorAdc0, radioData.sensorAdc1, radioData.rocketSts);
+        #endif
+
         radioSend(&radioData);
     }
+
+    #if DEBUG == true
+    delay(500);
+    #endif
 }
 
 void setup1(void) {

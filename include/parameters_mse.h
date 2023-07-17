@@ -7,7 +7,7 @@
 ******************************/
 
 // Debug
-#define DEBUG true
+// #define DEBUG true
 
 // ID
 #define PROJECT_ID 1
@@ -17,10 +17,11 @@
 #define LORA_BW 250
 #define LORA_PW 17
 #define LORA_OCP 240
-#define LORA_SF 9 // Spreding factor
+#define LORA_SF 9 // Spreading factor
 
 // TM
-#define FREQ_SEND_TM 4 // [Hz]
+#define FREQ_SEND_TM 2 // [Hz]
+#define SIZEOF_DATA_TM 27 // [bytes]
 
 // GNSS
 #define FREQ_DATA_GNSS 5 // [Hz]

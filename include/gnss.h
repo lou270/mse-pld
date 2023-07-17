@@ -21,7 +21,7 @@ typedef struct {
     uint8_t siv; // Satelite in view
 } GNSS_t;
 
-void setupGNSS(void);
+bool setupGNSS(void);
 void getGNSS(GNSS_t *gnssData);
 
 #endif

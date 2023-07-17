@@ -16,7 +16,7 @@
 #include "ADS1x1x.h"
 
 // void setupSensors(void);
-void setupSensorAdc(void);
+bool setupSensorAdc(void);
 void getSensorADCValue(int16_t *adcValue);
 
 #endif

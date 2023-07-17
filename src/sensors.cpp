@@ -11,7 +11,11 @@
 ADS1014 sensorAdc0;
 ADS1014 sensorAdc1;
 
-void setupSensorAdc(void) {
+bool sensorsInitialised = false;
+
+bool setupSensorAdc(void) {
+    bool ret = true;
+
     sensorAdc0.attach(Wire);
     sensorAdc0.setAddress(ADC_0_ADDRESS);
     sensorAdc0.gain(ADS1x1x::ConfigPGA::FSR_6_144V);
@@ -19,6 +23,11 @@ void setupSensorAdc(void) {
     sensorAdc0.datarate(ADS1x1x::ConfigDR::DR_12B_0920_SPS);
     sensorAdc0.compMode(ADS1x1x::ConfigCompMode::TRADITIONAL);
     sensorAdc0.compQue(ADS1x1x::ConfigCompQue::DISABLE);
+    if (sensorAdc0.status()) {
+        ret &= false;
+    } else {
+        ret &= true;
+    }
 
     #if defined(KRYPTONIT)
     sensorAdc1.attach(Wire);
@@ -28,16 +37,26 @@ void setupSensorAdc(void) {
     sensorAdc1.datarate(ADS1x1x::ConfigDR::DR_12B_0920_SPS);
     sensorAdc1.compMode(ADS1x1x::ConfigCompMode::TRADITIONAL);
     sensorAdc0.compQue(ADS1x1x::ConfigCompQue::DISABLE);
+    if (sensorAdc1.status()) {
+        ret &= false;
+    } else {
+        ret &= true;
+    }
     #endif
+
+    sensorsInitialised = ret;
+    return ret;
 }
 
 void getSensorADCValue(int16_t *adcValue) {
-    adcValue[0] = sensorAdc0.read();
-    #if defined(KRYPTONIT)
-    adcValue[1] = sensorAdc1.read();
-    #endif
+    if (sensorsInitialised == true) {
+        adcValue[0] = sensorAdc0.read();
+        #if defined(KRYPTONIT)
+        adcValue[1] = sensorAdc1.read();
+        #endif
 
-    #if DEBUG == true
-    Serial.printf("[ADC] ADC0: %d / ADC1: %d\n", adcValue[0], adcValue[1]);
-    #endif
+        #if DEBUG == true
+        Serial.printf("[ADC] ADC0: %d / ADC1: %d\n", adcValue[0], adcValue[1]);
+        #endif
+    }
 }

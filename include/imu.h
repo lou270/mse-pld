@@ -53,7 +53,7 @@ typedef struct {
     double P[2][2];
 } Kalman_t;
 
-void setupIMU(void);
+bool setupIMU(void);
 void getImuData(Imu_t* imuData, bool acqMag);
 void rawToSi(Imu_t* imuData);
 void computeAngle(Imu_t* imuData, Angle_t *angle);
