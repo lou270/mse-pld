@@ -32,9 +32,9 @@ typedef struct {
     int16_t raw_mx, raw_my, raw_mz;
 
     // True values
-    float ax, ay, az;
-    float gx, gy, gz;
-    float mx, my, mz;
+    float_t ax, ay, az;
+    float_t gx, gy, gz;
+    float_t mx, my, mz;
 } Imu_t;
 
 // Angle data type

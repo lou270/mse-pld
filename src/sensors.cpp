@@ -16,9 +16,17 @@ bool sensorsInitialised = false;
 bool setupSensorAdc(void) {
     bool ret = true;
 
+    #if DEBUG == true
+    Serial.printf("[SENSOR ADC] Initialisation ... ");
+    #endif
+
     sensorAdc0.attach(Wire);
     sensorAdc0.setAddress(ADC_0_ADDRESS);
+    #if defined(MSE)
+    sensorAdc0.gain(ADS1x1x::ConfigPGA::FSR_1_024V);
+    #elif defined(KRYPTONIT)
     sensorAdc0.gain(ADS1x1x::ConfigPGA::FSR_6_144V);
+    #endif
     sensorAdc0.mode(ADS1x1x::ConfigMode::CONTINUOUS);
     sensorAdc0.datarate(ADS1x1x::ConfigDR::DR_12B_0920_SPS);
     sensorAdc0.compMode(ADS1x1x::ConfigCompMode::TRADITIONAL);
@@ -41,6 +49,14 @@ bool setupSensorAdc(void) {
         ret &= false;
     } else {
         ret &= true;
+    }
+    #endif
+
+    #if DEBUG == true
+    if (sensorsInitialised == true) {
+        Serial.printf("init done\n");
+    } else {
+        Serial.printf("init failed\n");
     }
     #endif
 

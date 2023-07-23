@@ -23,8 +23,8 @@ typedef struct {
     uint64_t rocketSts; // Time + status
     int32_t gnssLat;
     int32_t gnssLon;
-    int32_t gnssAlt;
     int32_t pressure;
+    int16_t gnssAlt;
     int16_t temperature;
     int16_t accX;
     int16_t accY;
@@ -39,6 +39,7 @@ typedef struct {
 // ==> sizeof(DataFile_t) = 42
 
 void setupFileSystem();
+void writeDataToPreFlightBufferFile(DataFile_t* df);
 void writeDataToBufferFile(DataFile_t* df);
 void writeBufferToFile(void *buffer, uint32_t bufSize);
 

@@ -19,9 +19,12 @@ bool setupRadio(void) {
     #if DEBUG == true
     Serial.print(F("[RADIO] Initializing... "));
     #endif
+    
     uint8_t radioTry = 5;
     uint16_t state = 0;
     do {
+        radio.reset();
+        delay(500);
         state = radio.begin(LORA_FREQ);
         state += radio.setBandwidth(LORA_BW);
         state += radio.setOutputPower(LORA_PW);
@@ -30,7 +33,7 @@ bool setupRadio(void) {
         state += radio.setCRC(true, false);
         if (state != RADIOLIB_ERR_NONE) {
             #if DEBUG == true
-            Serial.print(F("[RADIO] Failed init, code:"));
+            Serial.print(F("failed init, code:"));
             Serial.println(state);
             #endif
 
@@ -45,7 +48,7 @@ bool setupRadio(void) {
         radio.setPacketSentAction(sendDoneCallback);
 
         #if DEBUG == true
-        Serial.println(F("[RADIO] SX1276 init done"));
+        Serial.println(F("init done"));
         #endif
     }
 

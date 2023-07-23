@@ -9,6 +9,7 @@
 
 // GNSS
 SFE_UBLOX_GNSS_SERIAL gnss;
+// SFE_UBLOX_GNSS gnss;
 bool gnssInitialised = false;
 
 bool setupGNSS() {
@@ -18,7 +19,7 @@ bool setupGNSS() {
     #endif
 
     uint8_t gnssTry = 5;
-    
+
     do {
         #if DEBUG == true
         Serial.println(F("[GNSS] trying 115200 baud"));
@@ -50,8 +51,8 @@ bool setupGNSS() {
     } while(gnssTry--);
 
     if (gnssInitialised == true) {
-        // gnss.setI2COutput(COM_TYPE_NMEA); //Set the I2C port to output both NMEA and UBX messages
-        gnss.setUART1Output(COM_TYPE_UBX); //Set the UART port to output NMEA only
+        // gnss.setI2COutput(COM_TYPE_UBX); //Set the I2C port to output UBX messages
+        gnss.setUART1Output(COM_TYPE_UBX); //Set the UART port to output UBX only
         gnss.setNavigationFrequency(FREQ_DATA_GNSS);
         gnss.setAutoPVT(true);
         gnss.saveConfigSelective(VAL_CFG_SUBSEC_IOPORT); //Save (only) the communications port settings to flash and BBR
@@ -70,22 +71,15 @@ void getGNSS(GNSS_t* gnssData) {
         #if DEBUG == true
         Serial.print(F("[MAX10S] Checking gps data...\n"));
         #endif
-        if(gnss.getPVT()) {
+        // if(gnss.getPVT()) {
             gnssData->lat = gnss.getLatitude();
             gnssData->lon = gnss.getLongitude();
             gnssData->alt = gnss.getAltitudeMSL();
             gnssData->siv = gnss.getSIV();
             #if DEBUG == true
-            Serial.print(F("[MAX10S] Lat: "));
-            Serial.print(gnssData->lat*1e-7);
-            Serial.print(F(" | Lon: "));
-            Serial.print(gnssData->lon*1e-7);
-            Serial.print(F(" | Alt: "));
-            Serial.print(gnssData->alt*1e-7);
-            Serial.print(F(" | SiV: "));
-            Serial.println(gnssData->siv);
+            Serial.printf("[MAX10S] Lat: %.7f | Lon: %.7f | Alt: %d | SiV: %d\n", gnssData->lat*1e-7, gnssData->lon*1e-7, gnssData->alt, gnssData->siv);
             #endif
-        }
+        // }
     }
 }
 

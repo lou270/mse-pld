@@ -7,7 +7,7 @@
 ******************************/
 
 // Debug
-// #define DEBUG true
+#define DEBUG false
 
 // ID
 #define PROJECT_ID 1
